@@ -1,0 +1,12 @@
+node_modules/
+generated/
+.ci/
+.isolated/
+*.local.json
+*.state.json
+*.evidence.json
+*.tgz
+*.log
+auth.json
+.env*
+!.env.example

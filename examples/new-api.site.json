@@ -1,0 +1,12 @@
+{
+  "site": "https://new-api.example.invalid",
+  "name": "Example New API",
+  "profiles": {
+    "standard": { "multiplier": 1 },
+    "vip": { "multiplier": 0.5 },
+    "unknown": {}
+  },
+  "models": [
+    { "id": "demo-model", "protocol": "chat", "context": 32000, "output": 4000, "tools": false, "image": false, "reasoning": false }
+  ]
+}

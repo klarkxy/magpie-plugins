@@ -1,0 +1,16 @@
+{
+  "baseUrl": "http://127.0.0.1:3425",
+  "intervalMinutes": 5,
+  "effectiveAt": "2026-01-01T00:00:00Z",
+  "percentageDirection": "used",
+  "coverage": "unknown",
+  "staleAfterSeconds": 600,
+  "maxPages": 20,
+  "plans": [
+    { "id": "plan-plus", "name": "Codex Plus", "price": 20, "currency": "USD", "period": { "unit": "month", "count": 1 } }
+  ],
+  "accounts": [
+    { "id": "account-a", "provider": "codex", "user": "LOCAL-ONLY-REPLACE", "planId": "plan-plus", "poolId": null }
+  ],
+  "models": { "gpt-demo": "gpt-demo" }
+}

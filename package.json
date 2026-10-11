@@ -1,0 +1,6 @@
+{
+  "name": "magpie-plugins-workspace",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": { "test": "node --test packages/new-api/test/plugin.test.mjs packages/new-api/test/native.test.mjs packages/quota-collector/test/collector.test.mjs", "check": "node --check packages/new-api/plugin.mjs && node --check packages/quota-collector/collector.mjs" }
+}

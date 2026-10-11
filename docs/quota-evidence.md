@@ -1,0 +1,20 @@
+# Quota 与 usage 字段证据
+
+固定 Magpie `396a6a3d4fc44b736ca34e303138ad8882ca11e8`，2026-10-11 只读核对。采集器仅使用回环 gateway 的公开只读接口，不实现 UI 扩展或 provider hooks 内的定时器。
+
+| 证据 | 源码 | 含义与缺口 |
+| --- | --- | --- |
+| `GET /v1/magpie/quotas` | [gateway.go quotas](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/gateway.go#L582) | `{object:list,data:Quota[]}`；本机可读，远程需既有共享授权。 |
+| `Quota` | [provider/quotas.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/provider/quotas.go) | provider/name/kind/plan/user/windows/balance/error/asOf/readAt/until/renew/resets/lastServedAt/from/alias/seat。没有稳定账号 ID 或统一上游更新时间。 |
+| `QuotaSpan` | [provider/quotas.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/provider/quotas.go) | name/used/remaining/resetsAt/display/amount/limit/unit/pool/unlimited；remaining 可能由 `max(0,100-used)` 构造。没有上游稳定窗口 ID。 |
+| GUI `GET /api/usage/quotas` | [gui/usage.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gui/usage.go#L178) | 返回 SubscriptionQuota[]；后台刷新未结束时可带 `X-Magpie-Reading:1`。采集器不依赖 GUI 或它的后台生命周期。 |
+| SubscriptionQuota/QuotaWindow | [subscription_usage.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/provider/subscription_usage.go#L28) | GUI 还包含 pool/family 等。readNow 可把没有源时间的新快照标记为当前本机时间；readAt 不是供应商更新时间证明。 |
+| 历史 | [quota_history.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/provider/quota_history.go#L47) | QuotaPoint: at/left/start/resetsAt；QuotaHistory: provider/lowercase-user/按 window name 的 lines。至少约 5 分钟的压缩点，45 天，缓存或失败不作新读；不等价于每次原始快照。 |
+| 稳定账号标识 | [account_models.go AccountIDs/AccountID](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/provider/account_models.go#L58) | 核心可生成 LoginID/KeyID；quota JSON 不直接带此标识，usage providerAccount 常是显示名。必须用户显式映射，不能猜额度池或跨接口对应关系。 |
+| usage 请求接口 | [usage_api.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/usage_api.go#L49)、[usageapi.go LedgerPage](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/usageapi/usageapi.go#L231) | `GET /v1/magpie/usage/requests`，rows 为嵌入 usage.Record 的 Row；默认100，最多500，offset分页。分页不是事务快照。 |
+| Record | [usage.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/usage/usage.go#L24) | t、providerAccount、providerKeyId、req/served、in/out、cache_read/cache_write/cache_write_1h、reasoning、effort、route_id、handed_on/rejected、computer 等。不存在统一 usage-present/估算标记。 |
+| 原生 token 口径 | [chat.go cUsage.usage](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/chat.go#L761)、[responses.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/responses.go#L1005)、[anthropic.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/anthropic.go#L993) | in 为未缓存输入；out 含 reasoning；cache_write_1h 是 cache_write 子项。部分代理字段语义和插件估算有差异，原始上游报告可能已被归一或丢失。 |
+| 落账与重试 | [gateway.go](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/gateway/gateway.go) 与 [usage.Record.HandedOn](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/usage/usage.go#L136) | 记录结束后写入，t 使用尝试开始时刻；失败 handoff 行与最终行关联同 route_id。在途不可见，不能用“当前没有行”证明零消耗。 |
+| 缺失 vs 0 | [host.js usageOf](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/plugin/host.js#L1765)、[usage.Record](https://github.com/yetone/magpie/blob/396a6a3d4fc44b736ca34e303138ad8882ca11e8/internal/usage/usage.go#L56) | hook 数值缺失/非法值可被归0；in/out 是整数且非 omitempty，缓存与reasoning是 omitempty。接口报告0无法反证上游漏报；省略子项也不应自动填0。 |
+
+collector 的“原始证据”是脱敏、未折算的 **Magpie 字段**，不是完整供应商原响应。姓名、邮箱、私有 host、会话、正文、错误文本和原 ID 不保存；仅保留数值、报告时间、匿名关联和异常。提供字段原值/unknown/invalid，保留尝试和数据 revision，不输出单价。套餐配置按版本与生效时间保存，月额度与标价 worth 等换算交给 real-api-pricing；尚未对齐其导入 schema。

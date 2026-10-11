@@ -1,0 +1,14 @@
+{
+  "name": "@klarkxy/magpie-quota-collector",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./collector.mjs",
+  "exports": "./collector.mjs",
+  "bin": { "magpie-quota-collector": "./cli.mjs" },
+  "files": ["collector.mjs", "cli.mjs", "README.md", "LICENSE"],
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "description": "Local, opt-in collection of anonymized Magpie quota and token evidence",
+  "repository": { "type": "git", "url": "https://github.com/klarkxy/magpie-plugins.git", "directory": "packages/quota-collector" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
