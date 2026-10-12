@@ -121,9 +121,13 @@ test("sample and scheduler never overlap; pause/resume and exit cancel pending r
   const a = r.collector.sample(), b = r.collector.sample(); assert.equal(a, b)
   await a; assert.equal(r.data.maxActive, 1)
   const run = r.collector.run({ intervalMs: 10 })
-  await wait(15); r.collector.pause(); await wait(70)
+  await wait(15); r.collector.pause()
+  if (r.collector.inflight) await r.collector.inflight
   const pausedCount = r.collector.state.samples.length; await wait(50); assert.equal(r.collector.state.samples.length, pausedCount)
-  r.collector.resume(); await wait(75); assert.ok(r.collector.state.samples.length > pausedCount)
+  r.collector.resume()
+  const deadline = Date.now() + 2000
+  while (r.collector.state.samples.length <= pausedCount && Date.now() < deadline) await wait(10)
+  assert.ok(r.collector.state.samples.length > pausedCount)
   r.collector.stop(); await run
   const count = r.collector.state.samples.length; await wait(40); assert.equal(r.collector.state.samples.length, count)
   assert.equal(r.data.maxActive, 1)
