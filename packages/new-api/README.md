@@ -1,31 +1,44 @@
 # New API for Magpie
 
-每个站点有独立供应商 ID，每个推理 key 是该供应商下的原生账号。模型入口区分站点、有效分组、计费身份和协议，倍率写在显示名称中，调整倍率不会改变 ID。同组、同计费身份的 key 复用 Magpie 原生账号调度。
+**只安装一个通用 New API 插件，再添加任意多个站点实例。** 每站有独立供应商 ID 和账号池；DragTokens 等中转商是实例，不是另一个插件。每个推理 key 是该站下的原生账号。模型入口区分站点、有效分组、计费身份和协议，倍率写在显示名称中，调整倍率不会改变 ID。同组、同计费身份的 key 复用 Magpie 原生账号调度。
 
 **首版分组和倍率是手动配置，始终显示“手动未验证”。** 推理 key 无法证明自身实际分组或个性化倍率，插件也不会用额度查询结果冒充分组证明。请从站点控制台核对 key 的有效固定组：当 key 的分组为空时，需核对其所属用户的实际组。远端修改 key 组后，需要重新连接该账号。不能靠本地标注改变远端账单。
 
-## 本地安装
+## 单次安装与站点管理
 
-1. 将 [站点配置示例](../../examples/new-api.site.json) 复制到 `generated/site.local.json`，填写公开或本地站点地址、计费身份和模型能力。不要写 key。站点 URL 应是 New API 根地址（可带部署子路径），**不带 `/v1`**；非回环地址必须 HTTPS。
-2. 为该站点生成一个 wrapper，并安装这个文件：
+把仓库放到长期保留的本地位置，Node.js 22+，然后安装通用包并添加站点：
 
 ```sh
-node packages/new-api/setup.mjs generated/site.local.json generated/site-plugin.mjs
-magpie plugin add ./generated/site-plugin.mjs
+node packages/new-api/manage.mjs install
+node packages/new-api/manage.mjs add --name "Example New API" --url https://new-api.example.invalid
+node packages/new-api/manage.mjs list
 magpie plugin list --json
 ```
 
-`setup` 不覆盖既有 wrapper；配置变化时显式生成新文件并重新安装。wrapper 引用本地包的绝对地址，移动仓库后需要重新生成。不要公开生成文件。一个站点只安装一个 wrapper；多个站点分别生成不同文件，规范化 URL 的 SHA256 前 16 位决定供应商 ID，互不共享账号或请求。相同地址、不同显示名称仍是同一个供应商。
+`install` 只把 `packages/new-api` 目录作为**一个**插件加入 `plugins.json`；`add` 修改这同一个条目的 `options.sites`，不生成任何站点插件文件。[完整选项示例](../../examples/new-api.options.json) 展示两个实例。管理命令只备份/更新插件列表，不读写 key、agent 模型、网络或安全设置，也不会触发原生 `plugin add` 的供应商迁移检查。不要移动已安装目录。所有命令可加 `--config-dir <Magpie数据目录>`；便携版须显式指定，普通安装默认 `$XDG_CONFIG_HOME/magpie` 或 `~/.config/magpie`。
 
-3. 从列表取得 `new-api-…` ID，连接一个或多个 key：
+站点 URL 是 New API 根地址（可带部署子路径），**不带 `/v1`**；非回环地址必须 HTTPS。首次添加不填分组、key 或倍率；计费身份默认 `unverified`，倍率未知。规范化 URL 的 SHA256 前16位决定供应商 ID。重命名不改变 ID，改 URL 则应添加新实例，避免把旧账号视为新站点的账号。
+
+从 `manage ... list` 得到各站 `new-api-…` ID，在 Magpie 插件页连接对应站点，或运行：
 
 ```sh
 magpie plugin login new-api-<site-hash>
 ```
 
-Magpie 会询问有效固定组、计费身份和 key。key 保存在 Magpie 原生账号存储中，wrapper 和站点配置不保存凭证。不需要管理员或账户管理凭证。
+Magpie 会询问有效固定组、计费身份和 key。key 只保存在 Magpie 原生账号存储中；站点列表不保存凭证。不需要管理员或账户管理凭证。
 
-4. **多个组需要显式同步供应商展示列表。** 在已验证的 Magpie 版本中，插件宿主给出所有账号模型的并集，但核心目录默认只展示首账号。下面的辅助脚本先预览，再按用户请求替换这个供应商的展示列表和模型名称：
+**现有 GUI 限制：** 可以在插件/订阅界面连接各站账号，但普通 provider 插件不能注入 Custom API 式的站点创建表单。当前版本的 JSON“选项”按钮也只对 middleware 显示。因此站点增删改通过本包管理命令；也可用原生 `magpie plugin options <包目录> '<包含sites的JSON>'`，但需自行保持正确结构。没有把 CLI 冒充 GUI，核心表单支持的最小方案见 [模板扩展说明](../../docs/magpie-template-support.md)。
+
+```sh
+node packages/new-api/manage.mjs set --url https://new-api.example.invalid --file generated/site.local.json
+node packages/new-api/manage.mjs remove --url https://new-api.example.invalid
+```
+
+`set` 读取 [站点配置示例](../../examples/new-api.site.json)，用于改显示名称、声明 profiles/倍率和模型能力；不接受凭证字段。`remove` 只移除该站实例，不删除原生 key，其他站不变；显式重新添加同一 URL 时恢复同一身份。每次修改先保存插件列表备份，宿主在下一次读取时加载新实例列表，无需增加插件条目。
+
+0.1 的每站 wrapper 安装方式已取消。升级不自动复制或重写账号凭证：已有 key 时先保留旧入口，用户自行在本机决定迁移；无 key 的旧入口可在备份后替换成通用插件中的一个同 URL 实例。旧文件应保留供回退，不执行账号退出。
+
+**一个站内多个组需要显式同步供应商展示列表。** 在已验证的 Magpie 版本中，插件宿主给出所有账号模型的并集，但核心目录默认只展示首账号。下面的辅助脚本先预览，再按用户请求替换这个供应商的展示列表和模型名称：
 
 ```sh
 node packages/new-api/sync-catalog.mjs new-api-<site-hash>

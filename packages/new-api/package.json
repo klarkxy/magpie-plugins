@@ -1,13 +1,14 @@
 {
   "name": "@klarkxy/magpie-new-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "main": "./index.mjs",
-  "exports": { ".": "./index.mjs", "./factory": "./plugin.mjs" },
-  "files": ["index.mjs", "plugin.mjs", "setup.mjs", "sync-catalog.mjs", "README.md", "LICENSE"],
+  "main": "./index.cjs",
+  "exports": { ".": "./index.cjs", "./factory": "./plugin.mjs" },
+  "bin": { "magpie-new-api": "./manage.mjs" },
+  "files": ["index.cjs", "registry.cjs", "plugin.mjs", "manage.mjs", "sync-catalog.mjs", "README.md", "LICENSE"],
   "engines": { "node": ">=22" },
   "license": "MIT",
-  "description": "Site-bound New API provider for Magpie with guarded group model aliases",
+  "description": "One New API plugin for multiple independent Magpie site instances with guarded group aliases",
   "repository": { "type": "git", "url": "https://github.com/klarkxy/magpie-plugins.git", "directory": "packages/new-api" },
   "scripts": { "test": "node --test test/*.test.mjs" }
 }

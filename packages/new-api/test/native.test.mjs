@@ -10,6 +10,7 @@ import net from "node:net"
 import { createPlugin } from "../plugin.mjs"
 import { fakeSite, authFor } from "./fixture.mjs"
 import { Collector } from "../../quota-collector/collector.mjs"
+import { manage } from "../manage.mjs"
 
 const exec = promisify(execFile)
 const available = process.env.MAGPIE_EXE && process.env.MAGPIE_BUN && process.env.MAGPIE_HOST
@@ -30,14 +31,16 @@ async function isolation() {
   return { root, env, dir }
 }
 
-async function wrapper(root, site, name) {
-  const file = join(root, name + ".mjs")
-  await writeFile(file, `import { createPlugin } from ${JSON.stringify(new URL("../plugin.mjs", import.meta.url).href)}\nexport default { server: input => createPlugin(input, { site: ${JSON.stringify(site)} }) }\n`)
-  return file
+async function genericEntry(iso, sites) {
+  const target = fileURLToPath(new URL("..", import.meta.url))
+  const options = { sites: sites.map((site, n) => ({ site, name: "Test site " + n, profiles: { standard: {} } })) }
+  const entry = { spec: target, options }
+  await writeFile(join(iso.dir, "plugins.json"), JSON.stringify({ plugins: [entry] }))
+  return { ...entry, target }
 }
 
 function hostRPC(env) {
-  const child = spawn(env.MAGPIE_BUN, [env.MAGPIE_HOST], { env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] })
+  const child = spawn(env.MAGPIE_BUN, [env.MAGPIE_HOST], { env, cwd: join(env.XDG_CONFIG_HOME, "magpie"), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] })
   let id = 0, pendingText = ""
   const pending = new Map()
   child.stdout.on("data", bytes => {
@@ -69,15 +72,18 @@ function hostRPC(env) {
 test("real Magpie Bun host: account lists, failed-list guard, alias restore, restart, sites, API sign-in", { skip: !available, timeout: 90000 }, async t => {
   const f = await fakeSite(), second = await fakeSite()
   t.after(() => f.close()); t.after(() => second.close())
-  const iso = await isolation(); const target = await wrapper(iso.root, f.site, "one"), target2 = await wrapper(iso.root, second.site, "two")
+  const iso = await isolation(); const entry = await genericEntry(iso, [f.site, second.site])
   const plugin = await createPlugin({}, { site: f.site }); const id = plugin.auth.provider
   const p2 = await createPlugin({}, { site: second.site }); const id2 = p2.auth.provider
   const accounts = { [id]: authFor(f.site), [id + "#b"]: authFor(f.site, "cheap", "fake-test-key-b"),
     [id + "#premium"]: authFor(f.site, "premium", "fake-test-key-premium"), [id2]: authFor(second.site) }
   const authPath = join(iso.dir, "plugin-auth.json"); await writeFile(authPath, JSON.stringify(accounts))
-  const init = { authPath, directory: iso.root, plugins: [{ spec: target, target }, { spec: target2, target: target2 }] }
+  const init = { authPath, directory: iso.dir, plugins: [entry] }
   let rpc = hostRPC(iso.env); t.after(() => rpc.child.kill())
-  assert.ok((await rpc.call("init", init)).plugins.every(p => !p.error))
+  const initialized = await rpc.call("init", init)
+  assert.equal(initialized.plugins.length, 1)
+  assert.equal(initialized.plugins[0].error, undefined, initialized.plugins[0].error)
+  assert.deepEqual(initialized.plugins[0].provides.sort(), [id, id2].sort())
   let list = await rpc.call("providers", {})
   const provider = list.find(p => p.id === id); assert.equal(provider.accounts.length, 3)
   const cheap = provider.accounts.find(a => a.key === id).models[0]
@@ -102,11 +108,35 @@ test("real Magpie Bun host: account lists, failed-list guard, alias restore, res
   console.log("PASS real host: metadata scope survives native sign-in and restart; failed discovery still blocks wrong group/site")
 })
 
+test("one generic package supports empty registry and native site add/rename/remove with no credentials", { skip: !available, timeout: 90000 }, async t => {
+  const f = await fakeSite(), second = await fakeSite()
+  t.after(() => f.close()); t.after(() => second.close())
+  const iso = await isolation(); await genericEntry(iso, [])
+  const list = async () => JSON.parse((await exec(iso.env.MAGPIE_EXE, ["plugin", "list", "--json"], { env: iso.env, windowsHide: true, timeout: 30000 })).stdout)
+  let result = await list()
+  assert.equal(result.plugins.length, 1); assert.equal(result.loaded[0].error, undefined)
+  assert.equal(result.providers.length, 0)
+  await manage(iso.dir, 'add', { name: 'First', url: f.site })
+  await manage(iso.dir, 'add', { name: 'Second', url: second.site })
+  result = await list()
+  assert.equal(result.plugins.length, 1); assert.equal(result.providers.length, 2)
+  assert.ok(result.providers.every(p => !p.signedIn && p.accounts.length === 0))
+  const first = result.providers.find(p => p.name === 'First')
+  const update = join(iso.root, 'update.local.json')
+  await writeFile(update, JSON.stringify({ name: 'Renamed', site: f.site }))
+  await manage(iso.dir, 'set', { url: f.site, file: update })
+  await manage(iso.dir, 'remove', { url: second.site })
+  result = await list()
+  assert.equal(result.plugins.length, 1); assert.equal(result.providers.length, 1)
+  assert.equal(result.providers[0].name, 'Renamed'); assert.equal(result.providers[0].id, first.id)
+  assert.equal(f.state.calls.length, 0); assert.equal(second.state.calls.length, 0)
+  console.log('PASS one installed package: arbitrary site registry, native add/rename/remove, no accounts or inference')
+})
+
 test("real Magpie gateway: native same-group failover, no implicit cross-group, pinning, explicit route, SSE cancellation", { skip: !available, timeout: 180000 }, async t => {
   const f = await fakeSite(); t.after(() => f.close())
-  const iso = await isolation(); const spec = await wrapper(iso.root, f.site, "native")
+  const iso = await isolation(); await genericEntry(iso, [f.site])
   const plugin = await createPlugin({}, { site: f.site }); const id = plugin.auth.provider
-  await writeFile(join(iso.dir, "plugins.json"), JSON.stringify({ plugins: [{ spec }] }))
   await writeFile(join(iso.dir, "plugin-auth.json"), JSON.stringify({ [id]: authFor(f.site),
     [id + "#b"]: authFor(f.site, "cheap", "fake-test-key-b"), [id + "#premium"]: authFor(f.site, "premium", "fake-test-key-premium") }))
   const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve))

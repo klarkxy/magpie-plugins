@@ -1,0 +1,6 @@
+{
+  "sites": [
+    { "name": "Example New API", "site": "https://new-api.example.invalid" },
+    { "name": "Another New API", "site": "https://another-new-api.example.invalid" }
+  ]
+}
